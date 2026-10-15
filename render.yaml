@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: cartpilot
+    runtime: docker
+    plan: free # 512 MB RAM; keep MAX_PARALLEL=1 so Chromium fits
+    healthCheckPath: /
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: STORE_MODE
+        value: mock
+      - key: HEADLESS
+        value: "true"
+      - key: MAX_PARALLEL
+        value: "1"
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: GEMINI_API_KEY
+        sync: false # you enter this in the Render dashboard
