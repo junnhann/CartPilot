@@ -19,7 +19,22 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 const money = n => "S$" + Number(n).toFixed(2);
 function safeUrl(u) { try { const x = new URL(u); return (x.protocol === "http:" || x.protocol === "https:") ? x.href : "#"; } catch { return "#"; } }
 function showError(msg) { $("error").textContent = msg || ""; $("error").hidden = !msg; }
-function show(id, on = true) { $(id).hidden = !on; }
+function show(id, on = true) { $(id).hidden = !on; updateSteps(); }
+
+// Progress bar at the top: the furthest visible section is the current step, earlier ones are done.
+const STEP_SECTIONS = ["step-goal", "step-recipes", "step-ingredients", "step-checklist", "step-live", "step-results"];
+function updateSteps() {
+  let current = 0;
+  STEP_SECTIONS.forEach((id, i) => { if ($(id) && !$(id).hidden) current = i; });
+  if (!$("step-results").hidden || !$("step-leftovers").hidden) current = 5;
+  document.querySelectorAll("#steps li").forEach(li => {
+    const i = +li.dataset.step;
+    li.classList.toggle("done", i < current);
+    li.classList.toggle("active", i === current);
+    if (i === current) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  });
+}
+updateSteps();
 function scrollTo_(id) { $(id).scrollIntoView({ behavior: "smooth", block: "start" }); }
 
 async function post(url, body) {
@@ -52,6 +67,12 @@ $("goal-form").addEventListener("submit", async e => {
     show("step-recipes");
   } catch (err) { showError(err.message); }
 });
+
+// Example chips fill the goal box and go straight to the recipe suggestions.
+document.querySelectorAll(".chip").forEach(chip => chip.addEventListener("click", () => {
+  $("goal").value = chip.dataset.goal;
+  $("goal-form").requestSubmit();
+}));
 
 // Hide everything after a given step so stale results never linger.
 function resetFrom(step) {
@@ -288,6 +309,7 @@ function renderResults() {
     }
     const idx = state.pick[item.ingredient] || 0, p = item.options[idx];
     card.classList.add(p.confidence === "high" ? "high" : p.confidence);
+    if (idx === 0) head.append(el("span", "badge ok best-pick", "★ Best pick"));
     const pick = el("div", "pick");
     const name = el("div", "name");
     const a = el("a", "", p.name); a.href = safeUrl(p.url); a.target = "_blank"; a.rel = "noopener noreferrer";
@@ -354,7 +376,17 @@ function refreshTotals() {
   $("basket-total").textContent = money(total);
   const missing = r.items.length - picks.length, unconfirmed = picks.filter(needsConfirm).length;
   $("basket-note").textContent = `(best mix across stores${missing ? `, ${missing} item(s) not found` : ""})`;
+  // How much the mixed basket beats buying everything in one store (only when some store stocks the whole list).
+  const fullTotals = r.store_totals.filter(t => t.found === nItems).map(t => t.total), sv = $("savings");
+  const vsCheapest = Math.min(...fullTotals) - total, vsPriciest = Math.max(...fullTotals) - total;
+  const parts = [];
+  if (fullTotals.length && !missing) {
+    if (vsCheapest > 0.005) parts.push(`${money(vsCheapest)} vs the cheapest single store`);
+    if (fullTotals.length > 1 && vsPriciest > 0.005) parts.push(`${money(vsPriciest)} vs the priciest`);
+  }
+  sv.textContent = parts.length ? "💰 Saves " + parts.join(", ") : ""; sv.hidden = !parts.length;
   const btn = $("open-all"); btn.disabled = !picks.length || unconfirmed > 0;
+  $("open-all-note").classList.remove("error");
   $("open-all-note").textContent = unconfirmed ? `Confirm or swap the ${unconfirmed} item(s) marked “Please confirm” first.` : "Opens each product page in a new tab. You choose what to buy there.";
   const links = $("open-links"); links.replaceChildren();
   for (const i of picks) {
@@ -365,8 +397,20 @@ function refreshTotals() {
 }
 
 $("open-all").addEventListener("click", () => {
-  // Browsers may block several pop-ups at once; the link list below is the fallback.
-  for (const i of state.report.items.filter(i => i.options.length)) window.open(safeUrl(pickOf(i).url), "_blank", "noopener");
+  // Browsers usually let a click open only one tab and block the rest as pop-ups. (No "noopener" feature here:
+  // it makes window.open always return null, so we couldn't tell which tabs were blocked. We clear opener instead.)
+  const urls = state.report.items.filter(i => i.options.length).map(i => safeUrl(pickOf(i).url));
+  let opened = 0;
+  for (const url of urls) {
+    const w = window.open(url, "_blank");
+    if (!w) continue;
+    opened++;
+    try { w.opener = null; } catch { /* cross-origin window: already isolated */ }
+  }
+  if (opened < urls.length) {
+    $("open-all-note").textContent = `Your browser blocked ${urls.length - opened} of ${urls.length} tabs. Click the pop-up blocked icon in the address bar and choose “Always allow”, then press the button again, or use the links below.`;
+    $("open-all-note").classList.add("error");
+  }
 });
 
 // ---------------------------------------------------------------- 7. leftovers

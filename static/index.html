@@ -12,7 +12,22 @@
       <h1>🛒 CartPilot</h1>
       <span id="mode-badge" class="badge info" hidden></span>
     </header>
-    <p class="muted tagline">Tell me what you want to cook. I'll check your fridge, then search the shops for you. I never add to cart, log in or buy anything.</p>
+
+    <nav class="steps" aria-label="Progress">
+      <ol id="steps">
+        <li data-step="0"><span class="dot">1</span><span class="step-label">Goal</span></li>
+        <li data-step="1"><span class="dot">2</span><span class="step-label">Recipe</span></li>
+        <li data-step="2"><span class="dot">3</span><span class="step-label">Fridge</span></li>
+        <li data-step="3"><span class="dot">4</span><span class="step-label">Review</span></li>
+        <li data-step="4"><span class="dot">5</span><span class="step-label">Search</span></li>
+        <li data-step="5"><span class="dot">6</span><span class="step-label">Results</span></li>
+      </ol>
+    </nav>
+
+    <div class="hero">
+      <h2 class="hero-title">Turn a meal idea into a <span>price-compared shopping list</span></h2>
+      <p class="muted tagline">Tell me what you want to cook. I'll check your fridge, then search the shops for you. I never add to cart, log in or buy anything.</p>
+    </div>
     <p id="error" class="error" role="alert" hidden></p>
 
     <!-- 1. goal -->
@@ -23,6 +38,12 @@
         <label>Servings <input id="servings" type="number" min="1" max="50" value="6"></label>
         <button>Suggest recipes</button>
       </form>
+      <div class="chips">
+        <span class="muted">Try:</span>
+        <button type="button" class="chip" data-goal="bake a chocolate cake">🍫 Bake a chocolate cake</button>
+        <button type="button" class="chip" data-goal="make chocolate chip cookies">🍪 Chocolate chip cookies</button>
+        <button type="button" class="chip" data-goal="fluffy pancakes for breakfast">🥞 Fluffy pancakes</button>
+      </div>
     </section>
 
     <!-- 2. recipe options -->
@@ -78,12 +99,16 @@
       <h3>Total per store</h3>
       <p class="muted">If you bought your whole list from one store (using that store's best picks).</p>
       <div id="store-totals"></div>
-      <div class="basket">
-        <div>Your list total: <strong id="basket-total">S$0.00</strong> <span id="basket-note" class="muted"></span></div>
+      <!-- direct child of the section so it can stay pinned to the bottom of the screen while scrolling the list -->
+      <div class="basket-bar">
+        <div>
+          <div>Your list total: <strong id="basket-total">S$0.00</strong> <span id="basket-note" class="muted"></span></div>
+          <div id="savings" class="savings" hidden></div>
+        </div>
         <button id="open-all" disabled>Open all product pages</button>
-        <p id="open-all-note" class="muted"></p>
-        <ul id="open-links" class="links"></ul>
       </div>
+      <p id="open-all-note" class="muted"></p>
+      <ul id="open-links" class="links"></ul>
     </section>
 
     <!-- 7. leftovers -->
