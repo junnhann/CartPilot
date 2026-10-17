@@ -19,3 +19,11 @@ def test_recipe_routes_demo(monkeypatch):
     assert r.status_code == 200 and r.json()["ingredients"]
     # validation: servings 0 rejected
     assert c.post("/api/recipes", json={"goal": "cake", "servings": 0}).status_code == 422
+
+
+def test_ingredients_endpoint_returns_steps(monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "DEMO_MODE", True)
+    data = TestClient(app).post("/api/ingredients", json={"goal": "cake", "recipe_title": "Classic Chocolate Cake",
+                                                         "servings": 6}).json()
+    assert 5 <= len(data["steps"]) <= 10 and data["prep_time"] and data["cook_time"]

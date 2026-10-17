@@ -44,6 +44,10 @@ class IngredientList(BaseModel):
     recipe_title: str
     servings: int
     ingredients: list[Ingredient] = Field(min_length=1)
+    # Beginner-friendly cooking method. Defaults keep an old or sloppy reply valid: the UI just hides the section.
+    steps: list[str] = Field(default_factory=list)  # plain sentences, no leading "1."
+    prep_time: str = ""  # e.g. "15 min"
+    cook_time: str = ""
 
 
 # ---- fridge scan ----

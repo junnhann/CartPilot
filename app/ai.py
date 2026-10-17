@@ -5,6 +5,7 @@ In DEMO_MODE we skip the network and return canned data instead.
 """
 import asyncio
 import logging
+import re
 
 from google import genai
 from google.genai import types
@@ -141,6 +142,77 @@ def _pick_demo(text: str) -> tuple:
     return _DEMO_RECIPES["chocolate cake"]
 
 
+# Sample cooking method per demo recipe: (prep time, cook time, steps). `{ingredient name}` is replaced with the
+# scaled amount, e.g. "{plain flour}" -> "225 g plain flour", so the steps always match the shopping list.
+_DEMO_METHOD = {
+    "Classic Chocolate Cake": ("20 min", "40 min", [
+        "Heat the oven to 175°C (350°F). Grease and line your cake tins with baking paper.",
+        "Sift {plain flour}, {cocoa powder} and {baking powder} into a large bowl, then stir in {salt}.",
+        "In another bowl, beat {butter} with {caster sugar} for about 3 minutes, until pale and fluffy.",
+        "Beat in {egg}, one at a time, then stir in {vanilla extract}.",
+        "Fold in the flour mixture in two batches, alternating with {milk}, until the batter is just smooth.",
+        "Divide the batter between the tins and smooth the tops.",
+        "Bake for 25 to 30 minutes, until a skewer pushed into the middle comes out clean.",
+        "Cool in the tins for 10 minutes, then turn out onto a wire rack and cool completely before decorating.",
+    ]),
+    "Chocolate Chip Cookies": ("15 min", "12 min", [
+        "Heat the oven to 180°C (350°F) and line two baking trays with baking paper.",
+        "Beat {butter} with {brown sugar} until creamy, then mix in {egg} and {vanilla extract}.",
+        "Stir {plain flour}, {baking soda} and {salt} together, then mix into the butter mixture until just combined.",
+        "Fold in {chocolate chips}.",
+        "Scoop tablespoon-sized balls onto the trays, leaving space between them.",
+        "Bake for 10 to 12 minutes, until golden at the edges but still soft in the middle. Cool on the tray for 5 minutes.",
+    ]),
+    "Fluffy Pancakes": ("10 min", "10 min", [
+        "Whisk {plain flour}, {caster sugar} and {baking powder} together in a large bowl.",
+        "In a jug, beat {egg} into {milk}.",
+        "Pour the wet mixture into the dry and stir until just combined. A few lumps are fine.",
+        "Melt a little of the {butter} in a non-stick frying pan over medium heat.",
+        "Pour in about a quarter cup of batter per pancake. Cook for 2 minutes, until bubbles appear, then flip and cook for 1 to 2 minutes more.",
+        "Repeat with the rest of the batter and butter, and serve warm.",
+    ]),
+    "Shortbread Biscuits": ("15 min", "20 min", [
+        "Heat the oven to 160°C (320°F) and line a baking tray.",
+        "Beat {butter} with {caster sugar} until smooth, then mix in {plain flour} and {salt} to make a dough.",
+        "Press or roll the dough out to 1 cm thick and cut it into fingers or rounds.",
+        "Bake for 18 to 20 minutes, until pale golden. Cool on the tray, because they firm up as they cool.",
+    ]),
+    "Hot Chocolate": ("2 min", "5 min", [
+        "Pour {milk} into a saucepan and warm it over medium heat until steaming. Don't let it boil.",
+        "Whisk in {cocoa powder} and {caster sugar} until smooth.",
+        "Pour into mugs and serve hot.",
+    ]),
+    "Banana Bread": ("15 min", "55 min", [
+        "Heat the oven to 175°C (350°F). Grease and line a loaf tin.",
+        "Mash {banana} in a large bowl until mostly smooth.",
+        "Melt {butter}, then stir it into the bananas with {caster sugar} and {egg}.",
+        "Stir in {baking soda} and {salt}, then fold in {plain flour} until just combined.",
+        "Pour into the tin and bake for 50 to 60 minutes, until a skewer comes out clean.",
+        "Cool in the tin for 10 minutes, then turn out onto a wire rack.",
+    ]),
+}
+
+
+def _amount_phrase(name: str, qty: float, unit: str) -> str:
+    """'225 g plain flour', '3 eggs', 'a pinch of salt'."""
+    if unit == "pinch":
+        return f"a pinch of {name}"
+    if unit == "piece":
+        return f"{qty:g} {name}{'' if qty == 1 else 's'}"
+    return f"{qty:g} {unit} {name}"
+
+
+def _fill_steps(templates: list[str], ingredients: list[Ingredient]) -> list[str]:
+    phrases = {i.name: _amount_phrase(i.name, i.quantity, i.unit) for i in ingredients}
+    return [re.sub(r"\{([^{}]+)\}", lambda m: phrases.get(m.group(1), m.group(1)), t) for t in templates]
+
+
+def _clean_steps(steps: list[str]) -> list[str]:
+    """The UI numbers the steps itself, so drop any "1." / "Step 2:" the model put in front, and blank entries."""
+    cleaned = (re.sub(r"^\s*(?:step\s*\d+\s*[:.)-]|\d+\s*[.)](?!\d))\s*", "", s, flags=re.I).strip() for s in steps)
+    return [s for s in cleaned if s]
+
+
 # ---------------------------------------------------------------- public API
 async def suggest_recipes(goal: str, servings: int) -> RecipeOptions:
     if config.DEMO_MODE:
@@ -158,21 +230,26 @@ async def suggest_recipes(goal: str, servings: int) -> RecipeOptions:
 
 async def generate_ingredients(goal: str, recipe_title: str, servings: int) -> IngredientList:
     if config.DEMO_MODE:
-        _, _, _, _, base, items = _pick_demo(recipe_title or goal)
+        title, _, _, _, base, items = _pick_demo(recipe_title or goal)
         factor = servings / base
-        return IngredientList(
-            recipe_title=recipe_title, servings=servings,
-            ingredients=[Ingredient(name=n, quantity=tidy_quantity(q * factor, u), unit=u) for n, q, u in items],
-        )
+        ingredients = [Ingredient(name=n, quantity=tidy_quantity(q * factor, u), unit=u) for n, q, u in items]
+        prep, cook, templates = _DEMO_METHOD.get(title, ("", "", []))
+        return IngredientList(recipe_title=recipe_title, servings=servings, ingredients=ingredients,
+                              steps=_fill_steps(templates, ingredients), prep_time=prep, cook_time=cook)
     prompt = (
         f"Recipe: '{recipe_title}' (goal: '{goal}'), scaled for {servings} servings. "
         "List every ingredient needed to buy. Rules: use GENERIC names that can be searched in a "
         "supermarket (e.g. 'plain flour', 'cocoa powder', never brand names); quantities must already "
         "be scaled to the servings; unit must be one of g, kg, ml, l, tsp, tbsp, cup, piece, pinch; "
-        "use 'piece' for eggs and countable items. Skip water."
+        "use 'piece' for eggs and countable items. Skip water. "
+        "Also write the cooking method in 'steps': 5 to 10 clear, beginner-friendly instructions, one short "
+        "sentence or two each, as plain strings WITHOUT step numbers. Use the same scaled quantities as the "
+        "ingredient list (e.g. 'Beat 175 g butter with 200 g sugar') and include oven temperatures and timings "
+        "where relevant. Set 'prep_time' and 'cook_time' to short strings like '15 min'."
     )
     result = await call_json(prompt, IngredientList)
     result.servings = servings
+    result.steps = _clean_steps(result.steps)
     for ing in result.ingredients:  # "0.88 cup" -> "1 cup": nicer to read and to shop for
         ing.quantity = tidy_quantity(ing.quantity, ing.unit)
     return result

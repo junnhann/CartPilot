@@ -27,7 +27,7 @@ Hackathon track: **Daily Life**.
 CartPilot takes a cooking goal and does the legwork, while the human stays in control of every decision:
 
 1. **You type a goal** ("bake a chocolate cake", 6 servings). The AI suggests 2–3 recipes; you pick one.
-2. **The AI writes the ingredient list**, scaled to your servings.
+2. **The AI writes the ingredient list**, scaled to your servings, plus a short, beginner-friendly **"How to make it"** method (numbered steps with prep and cook times) from the same request.
 3. **You upload a fridge/pantry photo.** The AI checks which *recipe ingredients* are visible, with a confidence level for each. Only high-confidence items are pre-ticked; unsure ones are marked **Please check**. You correct any mistakes.
 4. **You click Approve.** Nothing automated happens before this.
 5. **Browser agents search every store in parallel.** You watch them live in a grid of labelled browser screenshots, with an activity log and a running total per store.
@@ -38,14 +38,15 @@ CartPilot takes a cooking goal and does the legwork, while the human stays in co
 
 ### Demo walkthrough (about 2 minutes, works offline)
 
-1. Keep `DEMO_MODE=true`. Type **"bake a chocolate cake"**, 6 servings → **Suggest recipes** → pick **Classic Chocolate Cake**.
+1. Keep `DEMO_MODE=true`. Type **"bake a chocolate cake"**, 6 servings → **Suggest recipes** → pick **Classic Chocolate Cake**. Open **How to make it** under the ingredient list to read the 8 cooking steps, with quantities already scaled to 6 servings.
 2. Upload *any* photo as the "fridge". Demo mode reports milk and eggs as clearly present (pre-ticked), and butter and baking powder as unsure (**Please check**).
 3. Click **Approve & start searching** and watch three differently-styled shops searched at once. Try **Stop** if you like.
 4. On the results page notice that:
    * **cocoa powder** is the real powder, not QuickBasket's "Cocoa Powder Drink Mix" (the look-alike that QuickBasket's own search ranks *first*);
    * **baking powder** skips ValueGrocer's cheapest tin, because its size is just "Value Tin" and can't be parsed;
    * every row shows the pack maths and price per 100 g, plus swappable alternatives;
-   * an item marked **Please confirm** must be ticked or swapped before **Open all product pages** unlocks.
+   * an item marked **Please confirm** must be ticked or swapped before **Open all product pages** unlocks;
+   * the same collapsible **How to make it** card sits at the top, so you can cook from the page once you have shopped.
 5. In **Leftovers**, tap **Search for this recipe** on an idea. The leftovers are pre-marked as owned and you're back at the checklist.
 
 ### Architecture
@@ -79,6 +80,7 @@ CartPilot takes a cooking goal and does the legwork, while the human stays in co
 ## 3. Key Features
 
 * **Recipe → shopping list**, scaled to servings, with generic searchable names (no brands).
+* **"How to make it" cooking steps:** 5–10 numbered, beginner-friendly steps with prep and cook times, written by the same AI request as the ingredient list (no extra API call). Steps quote the same scaled quantities as the shopping list ("Beat 175 g butter with 200 g caster sugar"). Shown as a collapsible card on both the ingredient screen and the results page, and hidden if a recipe has no steps.
 * **Fridge-photo scan** that only reports on the recipe's ingredients, with per-item confidence.
 * **Parallel browser agents** (Playwright) across multiple stores, `MAX_PARALLEL` pages at a time, with retries and per-store failure handling.
 * **Live view:** labelled screenshot grid (~2 fps per tile), live activity log, progress bar, running total per store, and a **Stop** button.
@@ -100,7 +102,7 @@ AI is used in **five places**, all through Google Gemini (default model `gemini-
 | # | Where | What the AI does | Input |
 |---|---|---|---|
 | 1 | Recipe options | Suggests 2–3 realistic recipes for the goal and servings | Text |
-| 2 | Ingredient list | Writes a scaled ingredient list with generic names, quantities and units | Text |
+| 2 | Ingredient list + method | Writes a scaled ingredient list with generic names, quantities and units, and in the same reply 5–10 cooking steps with prep and cook times | Text |
 | 3 | Fridge scan (**vision**) | Says which of the *recipe's* ingredients are visible in the photo, with a high/medium/low confidence | Image (resized to ~1000 px wide) + the ingredient names |
 | 4 | Match review | Double-checks the chosen products ("is this really the same thing, in the right form?"). It can only **lower** confidence, never raise it | Ingredient + product name pairs |
 | 5 | Leftover ideas | Suggests 2–3 simple recipes that use the biggest leftovers (never the recipe just shopped for) | Leftover names and amounts |
@@ -220,22 +222,22 @@ The original plan included one real Singapore grocer. We checked FairPrice's pub
 
 ### Testing done
 
-**416 automated tests** (21 skipped by design, where a store doesn't sell an item), including:
+**423 automated tests** (21 skipped by design, where a store doesn't sell an item), including:
 
 * **Safety guard** (`test_safety.py`, `test_agent.py`): 100+ cases for forbidden wording, hidden labels (class-only, aria-only, inner span of a bad button), bad links, other hosts and unsafe URL schemes, plus the things that must stay *allowed*. Browser tests against real Chromium prove the "Add to cart" button on every mock product page is never clicked and that `/cart` and other sites are blocked. **We also verified the tests are real**: with the guard deliberately disabled, they fail.
 * **Approval and Stop:** no run without approval; Stop halts everything and nothing keeps running afterwards; a store showing a CAPTCHA is abandoned while the others carry on.
 * **Matching** (`test_matching.py`): look-alike traps, and a test over **every catalogue item in every store**, proving the pick is never a decoy.
 * **Units and maths** (`test_units.py`): dozens of messy size formats, conversions, price per unit, pack choice, leftovers.
-* **AI layer** (offline): schema validation, retries, error handling, fridge image preparation (bad files, size limits). A test guards against schema keywords the Gemini SDK rejects.
+* **AI layer** (offline): schema validation, retries, error handling, fridge image preparation (bad files, size limits). A test guards against schema keywords the Gemini SDK rejects. Cooking steps: demo recipes return steps whose quantities scale with servings, the schema accepts a reply with or without steps, live mode gets steps from the same single call, and step numbering added by the model is stripped.
 * **End to end:** approve → live WebSocket events → report (`test_runs.py`), and the real web page clicked through like a person (`test_ui.py`).
-* **Live Gemini checks (manual):** recipes, ingredients, fridge scan, match review and leftover ideas were run against the real API, along with a full run.
+* **Live Gemini checks (manual):** recipes, ingredients with cooking steps, fridge scan, match review and leftover ideas were run against the real API, along with a full run.
 
 ### Limitations
 
 * **Mock stores only.** Prices and products are synthetic, so CartPilot demonstrates the approach, not live prices from real shops.
 * **Heuristic matching.** The "different form" word list and the synonym table are hand-written and English-only; unusual products can slip through. That's why anything not high-confidence needs a human's confirmation.
 * **No allergen or dietary checking.** CartPilot does not read ingredient labels, and must not be relied on for allergies or dietary requirements.
-* **The AI can be wrong.** It can misjudge a fridge photo (hidden, blurry or look-alike items), suggest odd recipes, or mis-scale quantities. We tested the fridge scan with a simple synthetic image and a few demos, **not** with a large set of real fridge photos.
+* **The AI can be wrong.** It can misjudge a fridge photo (hidden, blurry or look-alike items), suggest odd recipes, or mis-scale quantities. The cooking steps are AI-written too: oven temperatures and timings are a guide, not a tested recipe, and there is no food-safety or allergen checking. In demo mode the steps are hand-written samples for the six built-in recipes. We tested the fridge scan with a simple synthetic image and a few demos, **not** with a large set of real fridge photos.
 * **Rough approximations:** the cup → gram table, typical piece weights (an onion ≈ 150 g), assuming 1 g ≈ 1 ml when no density is known (flagged as "Estimated"), and the 30% leftover threshold.
 * **Free-tier dependence:** live AI can be slow, busy or rate-limited. Use demo mode as the fallback.
 * **Scope:** one search at a time, prices in S$, one language (English), no accounts, no saved history.

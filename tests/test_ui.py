@@ -51,6 +51,10 @@ async def test_whole_user_journey(base_url):
         await page.click(".recipe >> nth=0")
         await page.wait_for_selector("#ing-list li")
         assert await page.locator("#ing-list li").count() == 9
+        assert "How to make it" in await page.inner_text("#method-ingredients")
+        await page.click("#method-ingredients summary")                       # collapsed until opened
+        assert await page.locator("#method-ingredients .steps-list li").count() == 8
+        assert "225 g plain flour" in await page.inner_text("#method-ingredients")
 
         # 3-4. fridge photo -> checklist with confidence badges
         await page.set_input_files("#photo", {"name": "fridge.png", "mimeType": "image/png", "buffer": png()})
@@ -74,6 +78,10 @@ async def test_whole_user_journey(base_url):
         # 6. results
         await page.wait_for_selector("#step-results:not([hidden])", timeout=120_000)
         await shot(page, "3-results")
+        await page.click("#method-results summary")
+        assert await page.locator("#method-results .steps-list li").count() == 8
+        assert "Classic Chocolate Cake" in await page.inner_text("#method-results")
+        assert "Prep 20 min" in await page.inner_text("#method-results")
         names = await page.locator(".item h4").all_inner_texts()
         assert len(names) == 7 and "egg" not in " ".join(names)      # milk + egg were ticked as owned
         cocoa = page.locator(".item", has_text="cocoa powder").first

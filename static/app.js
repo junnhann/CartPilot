@@ -5,6 +5,7 @@
 const state = {
   goal: "", servings: 6, recipe: null,
   ingredients: [],            // [{name, quantity, unit}] for the chosen recipe
+  method: null,               // {title, servings, prep_time, cook_time, steps} for the chosen recipe
   have: {},                   // name -> true if the user owns it
   flags: {},                  // name -> {confidence, note} from the fridge scan
   // live search
@@ -36,6 +37,23 @@ function updateSteps() {
 }
 updateSteps();
 function scrollTo_(id) { $(id).scrollIntoView({ behavior: "smooth", block: "start" }); }
+
+// "How to make it": a collapsible card with the recipe name, servings, times and numbered steps.
+// Shown on the ingredient screen and on the results page; hidden if the AI sent no steps.
+function renderMethod(boxId) {
+  const box = $(boxId), m = state.method;
+  box.replaceChildren();
+  if (!m || !m.steps.length) return;
+  const details = el("details", "method");
+  details.append(el("summary", "", "👩‍🍳 How to make it"));
+  details.append(el("h4", "", `${m.title} · ${m.servings} servings`));
+  const times = [m.prep_time && `Prep ${m.prep_time}`, m.cook_time && `Cook ${m.cook_time}`].filter(Boolean);
+  if (times.length) details.append(el("p", "muted", times.join(" · ")));
+  const ol = el("ol", "steps-list");
+  for (const step of m.steps) ol.append(el("li", "", step));
+  details.append(ol);
+  box.append(details);
+}
 
 async function post(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -90,6 +108,9 @@ async function pickRecipe(recipe, owned = []) {
     $("ing-title").textContent = `${recipe.title} · ${state.servings} servings`;
     const ul = $("ing-list"); ul.replaceChildren();
     for (const i of data.ingredients) ul.append(el("li", "", `${i.name} — ${i.quantity} ${i.unit}`));
+    state.method = { title: recipe.title, servings: state.servings, prep_time: data.prep_time || "", cook_time: data.cook_time || "",
+                     steps: data.steps || [] };
+    renderMethod("method-ingredients");
     show("step-ingredients");
     return data;
   } catch (err) { showError(err.message); return null; }
@@ -289,6 +310,7 @@ function renderReport(report) {
   state.report = report;
   if (fresh) { state.pick = {}; state.confirmed = {}; }
   show("step-results");
+  renderMethod("method-results");
   renderResults();
   if (fresh) loadIdeas();
 }

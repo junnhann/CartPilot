@@ -125,6 +125,15 @@ table.totals { width: 100%; border-collapse: collapse; border: 1px solid var(--l
 .idea { border: 1px solid var(--line); border-radius: 12px; padding: .9rem 1.1rem; margin: .7rem 0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap; transition: box-shadow .15s; }
 .idea:hover { box-shadow: var(--shadow); }
 
+/* "How to make it" */
+details.method { border: 1px solid #c7d2fe; background: var(--brand-soft); border-radius: 12px; padding: .2rem 1.1rem; margin: .8rem 0 1rem; }
+details.method summary { cursor: pointer; font-weight: 700; padding: .7rem 0; color: var(--brand-d); }
+details.method[open] summary { border-bottom: 1px solid #c7d2fe; margin-bottom: .6rem; }
+details.method h4 { margin: .2rem 0; font-size: 1.05rem; }
+.steps-list { padding-left: 1.4rem; margin: .5rem 0 .8rem; }
+.steps-list li { padding: .3rem 0 .3rem .3rem; }
+.steps-list li::marker { color: var(--brand); font-weight: 700; }
+
 /* progress steps */
 .steps { position: sticky; top: 0; z-index: 10; margin: .8rem -1rem 0; padding: .6rem 1rem; background: #f4f5fbd9; backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb80; }
 .steps ol { list-style: none; margin: 0 auto; padding: 0; max-width: 1000px; display: flex; align-items: center; }
